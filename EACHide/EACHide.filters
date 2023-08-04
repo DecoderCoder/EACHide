@@ -1,0 +1,69 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="EACHide.cpp" />
+    <ClCompile Include="Zydis\Zydis.c" />
+    <ClCompile Include="RawPDB\PDB.cpp" />
+    <ClCompile Include="RawPDB\PDB_CoalescedMSFStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_DBIStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_DBITypes.cpp" />
+    <ClCompile Include="RawPDB\PDB_DirectMSFStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_GlobalSymbolStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_ImageSectionStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_InfoStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_IPIStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_ModuleInfoStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_ModuleLineStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_ModuleSymbolStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_NamesStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_PCH.cpp" />
+    <ClCompile Include="RawPDB\PDB_PublicSymbolStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_RawFile.cpp" />
+    <ClCompile Include="RawPDB\PDB_SectionContributionStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_SourceFileStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_TPIStream.cpp" />
+    <ClCompile Include="RawPDB\PDB_Types.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Zydis\Zydis.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_ArrayView.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_Assert.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_BitOperators.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_BitUtil.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_DisableWarningsPop.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_DisableWarningsPush.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_Forward.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_Log.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_Macros.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_Memory.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_Move.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_Platform.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_PointerUtil.h" />
+    <ClInclude Include="RawPDB\Foundation\PDB_Warnings.h" />
+    <ClInclude Include="RawPDB\PDB.h" />
+    <ClInclude Include="RawPDB\PDB_CoalescedMSFStream.h" />
+    <ClInclude Include="RawPDB\PDB_DBIStream.h" />
+    <ClInclude Include="RawPDB\PDB_DBITypes.h" />
+    <ClInclude Include="RawPDB\PDB_DirectMSFStream.h" />
+    <ClInclude Include="RawPDB\PDB_ErrorCodes.h" />
+    <ClInclude Include="RawPDB\PDB_GlobalSymbolStream.h" />
+    <ClInclude Include="RawPDB\PDB_ImageSectionStream.h" />
+    <ClInclude Include="RawPDB\PDB_InfoStream.h" />
+    <ClInclude Include="RawPDB\PDB_IPIStream.h" />
+    <ClInclude Include="RawPDB\PDB_IPITypes.h" />
+    <ClInclude Include="RawPDB\PDB_ModuleInfoStream.h" />
+    <ClInclude Include="RawPDB\PDB_ModuleLineStream.h" />
+    <ClInclude Include="RawPDB\PDB_ModuleSymbolStream.h" />
+    <ClInclude Include="RawPDB\PDB_NamesStream.h" />
+    <ClInclude Include="RawPDB\PDB_PCH.h" />
+    <ClInclude Include="RawPDB\PDB_PublicSymbolStream.h" />
+    <ClInclude Include="RawPDB\PDB_RawFile.h" />
+    <ClInclude Include="RawPDB\PDB_SectionContributionStream.h" />
+    <ClInclude Include="RawPDB\PDB_SourceFileStream.h" />
+    <ClInclude Include="RawPDB\PDB_TPIStream.h" />
+    <ClInclude Include="RawPDB\PDB_TPITypes.h" />
+    <ClInclude Include="RawPDB\PDB_Types.h" />
+    <ClInclude Include="RawPDB\PDB_Util.h" />
+    <ClInclude Include="color.hpp" />
+  </ItemGroup>
+</Project>
