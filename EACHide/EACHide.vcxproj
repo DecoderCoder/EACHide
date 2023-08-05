@@ -172,6 +172,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="color.hpp" />
+    <ClInclude Include="EACHide.h" />
     <ClInclude Include="RawPDB\Foundation\PDB_ArrayView.h" />
     <ClInclude Include="RawPDB\Foundation\PDB_Assert.h" />
     <ClInclude Include="RawPDB\Foundation\PDB_BitOperators.h" />
