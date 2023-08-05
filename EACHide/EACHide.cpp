@@ -129,6 +129,68 @@ public:
 	}
 };
 
+template< typename T >
+std::string to_hex(T i, int count = 0)
+{
+	std::stringstream stream;
+	uint64_t bytes = 0xFFFFFFFFFFFFFFFF;
+	if (count == 0)
+		count = sizeof(T);
+	count *= 8;
+	bytes = bytes >> sizeof(bytes) * 8 - count;
+	stream << std::setfill('0') << std::setw(sizeof(T) * 2) << std::hex << (bytes & i);
+	return stream.str();
+}
+
+string hashString(string str, int size = 4) {
+	size /= 2;
+	string temp;
+	if (str.size() < size) {
+		temp = str;
+		for (int i = str.size(); i < size; i++) {
+			temp += "\0";
+		}
+	}
+	else {
+		temp = string(str, 0, size);
+	}
+	string result = "";
+
+	for (int i = 0; i < str.size() || i < size; i++) {
+		temp[i % temp.size()] += str[i % str.size()];
+	}
+
+	for (int i = 0; i < temp.size(); i++) {
+		result += to_hex((char)temp[i]);
+	}
+
+
+	return result;
+}
+
+std::string ReplaceAll(std::string str, const std::string& from = "", const std::string& to = "") {
+	if (from == "" && to == "") {
+		string resultStr = "";
+		for (int i = 0; i < str.size(); i++) {
+			if (std::isdigit((unsigned char)str[i]) || std::ispunct((unsigned char)str[i]) || std::isalpha((unsigned char)str[i]))
+			{
+				resultStr += str[i];
+			}
+			else {
+				resultStr += hashString(string("_") + str[i] + "_");
+			}
+		}
+		return resultStr;
+	}
+
+	size_t start_pos = 0;
+	while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
+		str.replace(start_pos, from.length(), to);
+		start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
+	}
+	return str;
+}
+
 enum class ReplaceInstructionType {
 	GetModuleHandle,
 	GetAsyncKeyState,
@@ -148,9 +210,10 @@ DWORD __stdcall readDataFromExtProgram(void* argh)
 	for (;;)
 	{
 		bSuccess = ReadFile(m_hChildStd_OUT_Rd, chBuf, BUFSIZE, &dwRead, NULL);
-		if (!bSuccess || dwRead == 0) continue;
+		if (!bSuccess || dwRead == 0)
+			continue;
 
-		cout << string(chBuf, dwRead);
+		cout << ReplaceAll(string(chBuf, dwRead), "\n", "\n - ");
 
 		if (!bSuccess) break;
 	}
@@ -270,19 +333,6 @@ PDB::ArrayView<PDB::IMAGE_SECTION_HEADER>* o_Sections;
 PDB::ArrayView<PDB::IMAGE_SECTION_HEADER>* c_Sections;
 PIMAGE_SECTION_HEADER newSectionHeader;
 
-template< typename T >
-std::string to_hex(T i, int count = 0)
-{
-	std::stringstream stream;
-	uint64_t bytes = 0xFFFFFFFFFFFFFFFF;
-	if (count == 0)
-		count = sizeof(T);
-	count *= 8;
-	bytes = bytes >> sizeof(bytes) * 8 - count;
-	stream << std::setfill('0') << std::setw(sizeof(T) * 2) << std::hex << (bytes & i);
-	return stream.str();
-}
-
 PDB::IMAGE_SECTION_HEADER* GetSectionByName(std::string name) {
 	for (auto section : *o_Sections) {
 		if (string((char*)section.Name) == name) {
@@ -381,32 +431,6 @@ Function* GetFunctionByRVA(uint32_t RVA, bool first = false) {
 	return GetFunctionByRVA(RVA, o_Functions, first);
 }
 
-string hashString(string str, int size = 4) {
-	size /= 2;
-	string temp;
-	if (str.size() < size) {
-		temp = str;
-		for (int i = str.size(); i < size; i++) {
-			temp += "\0";
-		}
-	}
-	else {
-		temp = string(str, 0, size);
-	}
-	string result = "";
-
-	for (int i = 0; i < str.size() || i < size; i++) {
-		temp[i % temp.size()] += str[i % str.size()];
-	}
-
-	for (int i = 0; i < temp.size(); i++) {
-		result += to_hex((char)temp[i]);
-	}
-
-
-	return result;
-}
-
 void WriteToFile(std::string FileName, std::string text) {
 	std::ofstream myfile;
 	myfile.open(FileName, std::ios_base::app);
@@ -426,31 +450,6 @@ void WriteToFile(std::string FileName, char* file, size_t size) {
 	myfile.open(FileName, std::ios_base::out | std::ios::binary);
 	myfile.write(file, size);
 	myfile.close();
-}
-
-// --basemodule "modulename.exe" // GetModuleHandle(NULL)
-
-std::string ReplaceAll(std::string str, const std::string& from = "", const std::string& to = "") {
-	if (from == "" && to == "") {
-		string resultStr = "";
-		for (int i = 0; i < str.size(); i++) {
-			if (std::isdigit((unsigned char)str[i]) || std::ispunct((unsigned char)str[i]) || std::isalpha((unsigned char)str[i]))
-			{
-				resultStr += str[i];
-			}
-			else {
-				resultStr += hashString(string("_") + str[i] + "_");
-			}
-		}
-		return resultStr;
-	}
-
-	size_t start_pos = 0;
-	while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
-		str.replace(start_pos, from.length(), to);
-		start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
-	}
-	return str;
 }
 
 Function GetFunctionByRecord(const PDB::CodeView::DBI::Record* record, const PDB::ImageSectionStream& imageSectionStream, Function::Type funcType) {
@@ -578,45 +577,6 @@ void dissasemble_function(char* exeFile, Function& func)
 	}
 }
 
-int fix_instruction_data(char* o_exeFile, char* c_exeFile, ZydisDisassembledInstruction& inst, uintptr_t oRuntimeAddress, uint32_t funcRVA, uint32_t funcSize, uint32_t dataOffset) {
-	int size = 0;
-
-	if (!(inst.info.mnemonic == ZYDIS_MNEMONIC_MOV || inst.info.mnemonic == ZYDIS_MNEMONIC_LEA))
-		return 0;
-	if (string(inst.text).find("0x") == string::npos) // remove this
-		return 0;
-
-	if (inst.operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY && inst.operands[1].mem.base == ZYDIS_REGISTER_RIP) {
-		size = 8;
-		int offset = inst.operands[1].mem.disp.value;
-
-		if (oRuntimeAddress + offset + inst.info.length >= funcRVA && oRuntimeAddress + offset <= funcRVA + funcSize)
-			return 0;
-
-		int destAddr = RVA2Offset(oRuntimeAddress + offset + inst.info.length, c_Sections);
-		int oldData = destAddr;
-		int newData = newSectionHeader->PointerToRawData + newSectionHeader->SizeOfRawData - dataOffset - size;
-		memcpy(o_exeFile + newData, c_exeFile + oldData, size);
-		inst.operands[1].mem.disp.value = Offset2RVA(newData) - inst.runtime_address - inst.info.length;
-		ZydisEncoderRequest req;
-		memset(&req, 0, sizeof(req));
-
-		if (ZYAN_FAILED(ZydisEncoderDecodedInstructionToEncoderRequest(&inst.info, inst.operands, inst.info.operand_count, &req))) {
-			return 0;
-		}
-		ZyanU8 encoded_instruction[ZYDIS_MAX_INSTRUCTION_LENGTH];
-		ZyanUSize encoded_length = sizeof(encoded_instruction);
-
-		if (ZYAN_SUCCESS(ZydisEncoderEncodeInstruction(&req, encoded_instruction, &encoded_length))) {
-			memcpy(o_exeFile + RVA2Offset(inst.runtime_address), encoded_instruction, encoded_length); // if wrong length, you will see in debugger wrong instructs after
-		}
-		else {
-			return 0;
-		}
-	}
-	return size;
-}
-
 void fix_function_calls(char* o_exeFile, Function& func, uint32_t oRVA) {
 	for (auto& inst : func.instructions) {
 		if (inst.info.mnemonic == ZYDIS_MNEMONIC_CALL) {
@@ -631,13 +591,12 @@ void fix_function_calls(char* o_exeFile, Function& func, uint32_t oRVA) {
 			Function* oldFunc = GetFunctionByRVA(oldRVA, c_Functions);
 			if (!oldFunc)
 				continue;
-			if (oldFunc->Name == "__security_check_cookie") // fix this
-			{
-				memset(o_exeFile + RVA2Offset(inst.runtime_address), 0x90, inst.info.length);
-				continue;
-			}
 
-
+			//if (oldFunc->Name == "__security_check_cookie") // fix this // fixed with /GS- and removing /sdl
+			//{
+			//	memset(o_exeFile + RVA2Offset(inst.runtime_address), 0x90, inst.info.length);
+			//	continue;
+			//}
 
 			Function* newFunc = GetFunctionByName(oldFunc->Name, true, true);
 			if (!newFunc)
@@ -646,7 +605,6 @@ void fix_function_calls(char* o_exeFile, Function& func, uint32_t oRVA) {
 			int newOffset = newFunc->RVA - inst.runtime_address - inst.info.length;
 			auto instAddr = o_exeFile + RVA2Offset(inst.runtime_address);
 			*(int*)(instAddr + inst.info.length - sizeof(int)) = newOffset;
-
 
 			//inst.operands[0].mem.disp.value = newFunc->RVA - inst.runtime_address - inst.info.length;
 
@@ -679,13 +637,6 @@ void InsertFunction(char* o_exeFile, char* c_exeFile, Function* oldFunc, uint32_
 	newGetAsyncKeyState.RVA = RVA;
 	newGetAsyncKeyState.Size = oldFunc->Size;
 	dissasemble_function(o_exeFile, newGetAsyncKeyState);
-
-	for (auto& inst : newGetAsyncKeyState.instructions) {
-		int off = fix_instruction_data(o_exeFile, c_exeFile, inst, inst.runtime_address - RVA + oldFunc->RVA, oldFunc->RVA, oldFunc->Size, backwardOffset);
-		backwardOffset += off;
-		if (off != 0)
-			cout << " --- Fixed instruction at " << dye::white("0x") << dye::white(inst.runtime_address) << endl;
-	}
 
 	o_Functions.push_back(newGetAsyncKeyState);
 	addedFunctions[oldFunc->RVA] = newGetAsyncKeyState;
@@ -1159,8 +1110,9 @@ int main(int argc, char* argv[])
 
 		memset(&clProc, 0, sizeof(clProc));
 
-		if (CreateProcessW((LPWSTR)clPath.c_str(), (LPWSTR)L" EACHide.cpp /nologo /permissive- /GS /GL /Gy /Zc:wchar_t /Zi /Gm- /O2 /sdl /Zc:inline /fp:precise /Zc:forScope /Gd /Oi /MT /FC ", NULL, NULL, TRUE, CREATE_UNICODE_ENVIRONMENT, pEnv, (currentPath + L"\\EACHide\\").c_str(), &si, &clProc))
+		if (CreateProcessW((LPWSTR)clPath.c_str(), (LPWSTR)L" EACHide.cpp /nologo /permissive- /GS- /GL /Gy /Zc:wchar_t /Zi /Gm- /O2 /Zc:inline /fp:precise /Zc:forScope /Gd /Oi /MT /FC ", NULL, NULL, TRUE, CREATE_UNICODE_ENVIRONMENT, pEnv, (currentPath + L"\\EACHide\\").c_str(), &si, &clProc))
 		{
+			cout << " - "; // lifehack
 			m_hreadDataFromExtProgram = CreateThread(0, 0, readDataFromExtProgram, NULL, 0, NULL);
 			WaitForSingleObject(clProc.hProcess, INFINITE);
 		}
@@ -1170,16 +1122,21 @@ int main(int argc, char* argv[])
 		DWORD exit_code = 0;
 		if (GetExitCodeProcess(clProc.hProcess, &exit_code)) {
 			if (exit_code == 0) {
-				cout << dye::black_on_green(" - Compilation success ") << endl;
+				cout << dye::black_on_green(" Compilation success ") << endl;
 			}
 			else {
-				cout << hue::black_on_green << " - Compilation failed: " << exit_code << " " << hue::reset << endl;
+				cout << hue::black_on_red << " Compilation failed: " << exit_code << " " << hue::reset << endl;
+#ifdef _DEBUG // continue when file is open
+				if (exit_code != 2)
+					return exit_code;
+#else
 				return exit_code;
+#endif
 			}
 
 		}
 		else {
-			cout << hue::black_on_green << " - Failed to run MSVC: " << GetLastError() << " " << hue::reset << endl;
+			cout << hue::black_on_red << " Failed to run MSVC: " << GetLastError() << " " << hue::reset << endl;
 			return GetLastError();
 		}
 
@@ -1257,7 +1214,7 @@ int main(int argc, char* argv[])
 		uint32_t backwardOffset = 32;
 		std::map<uint32_t, Function> addedFunctions;
 		{
-			Function* GetAsyncKeyStateFunc = GetFunctionByName(GetAsyncKeyStateFuncName, c_Functions);			
+			Function* GetAsyncKeyStateFunc = GetFunctionByName(GetAsyncKeyStateFuncName, c_Functions);
 			if (GetAsyncKeyStateFunc) { // GetAsyncKeyState	
 				InsertFunction(o_exeFile, c_exeFile, GetAsyncKeyStateFunc, offset, backwardOffset, addedFunctions);
 			}
@@ -1268,11 +1225,12 @@ int main(int argc, char* argv[])
 					Function* func = inst.function;
 					if (inst.type == ReplaceInstructionType::GetModuleHandle) {
 						string newFuncName = "_" + hashString(inst.getAsyncKeyState.moduleName);
-						if (Function* newFunction = GetFunctionByName(newFuncName, c_Functions)) { // Replacing
+						if (!GetFunctionByName(newFuncName))
+							if (Function* newFunction = GetFunctionByName(newFuncName, c_Functions)) { // Replacing
 
-							InsertFunction(o_exeFile, c_exeFile, newFunction, offset, backwardOffset, addedFunctions);
+								InsertFunction(o_exeFile, c_exeFile, newFunction, offset, backwardOffset, addedFunctions);
 
-						}
+							}
 					}
 				}
 			}
