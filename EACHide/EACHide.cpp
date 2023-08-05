@@ -625,7 +625,7 @@ void fix_function_calls(char* o_exeFile, Function& func, uint32_t oRVA) {
 	}
 }
 
-void InsertFunction(char* o_exeFile, char* c_exeFile, Function* oldFunc, uint32_t& offset, uint32_t& backwardOffset, std::map<uint32_t, Function>& addedFunctions) {
+void CopyFunction(char* o_exeFile, char* c_exeFile, Function* oldFunc, uint32_t& offset, uint32_t& backwardOffset, std::map<uint32_t, Function>& addedFunctions) {
 	memcpy(o_exeFile + newSectionHeader->PointerToRawData + offset, c_exeFile + RVA2Offset(oldFunc->RVA, c_Sections), oldFunc->Size);
 	auto RVA = Offset2RVA(newSectionHeader->PointerToRawData + offset);
 
@@ -641,6 +641,20 @@ void InsertFunction(char* o_exeFile, char* c_exeFile, Function* oldFunc, uint32_
 	o_Functions.push_back(newGetAsyncKeyState);
 	addedFunctions[oldFunc->RVA] = newGetAsyncKeyState;
 	offset += oldFunc->Size + 8 + oldFunc->Size % 16;
+}
+
+void InsertByteFunction(char* o_exeFile, string funcName, unsigned char* code, uint32_t codeSize, uint32_t& offset) {
+	memcpy(o_exeFile + newSectionHeader->PointerToRawData + offset, code, codeSize);
+
+	auto RVA = Offset2RVA(newSectionHeader->PointerToRawData + offset);
+	Function func;
+	func.FuncType = Function::Type::Global;
+	func.Name = funcName;
+	func.RVA = RVA;
+	func.Size = codeSize;
+	o_Functions.push_back(func);
+
+	offset += codeSize + 8 + codeSize % 16;
 }
 
 int main(int argc, char* argv[])
@@ -978,37 +992,6 @@ int main(int argc, char* argv[])
 		WriteToFile(resultFileName, "#include \"LazyImporter.hpp\"");
 		WriteToFile(resultFileName, "");
 
-		WriteToFile(resultFileName, "#ifndef _DEBUG");
-		WriteToFile(resultFileName, "#pragma comment(linker, \"/include:" + GetAsyncKeyStateFuncName + "\")");
-		WriteToFile(resultFileName, "EXTERN_C __declspec(noinline) short " + GetAsyncKeyStateFuncName + "(int vKey) {");
-		WriteToFile(resultFileName, "	auto kernel32 = LI_MODULE(\"kernel32.dll\").safe<char*>();");
-		WriteToFile(resultFileName, "	if (!kernel32)");
-		WriteToFile(resultFileName, "		return 0;");
-		WriteToFile(resultFileName, "	auto poorVGetAsyncKeyState = kernel32 + 0x81600;");
-		WriteToFile(resultFileName, "	if (*poorVGetAsyncKeyState == 0) {");
-		WriteToFile(resultFileName, "		auto pReturnAddress = poorVGetAsyncKeyState - sizeof(uintptr_t) * 1;");
-		WriteToFile(resultFileName, "		unsigned char shellCode[] = {");
-		WriteToFile(resultFileName, "			0x4D, 0x89, 0xFA, //");
-		WriteToFile(resultFileName, "			0xB8, 0x3F, 0x10, 0x00, 0x00, //getasynckeystate");
-		WriteToFile(resultFileName, "			0x0F, 0x05,  //syscall");
-		WriteToFile(resultFileName, "			0xFF, 0x25, 0xE8, 0xFF, 0xFF, 0xFF // jmp far [rip-24]");
-		WriteToFile(resultFileName, "		};");
-		WriteToFile(resultFileName, "		DWORD old;");
-		WriteToFile(resultFileName, "		VirtualProtect(pReturnAddress, sizeof(shellCode) + sizeof(uintptr_t) * 1, 0x40, &old);");
-		WriteToFile(resultFileName, "		VirtualProtect(&" + GetAsyncKeyStateFuncName + ", 0x9999999, 0x40, &old);");
-		WriteToFile(resultFileName, "		memcpy(poorVGetAsyncKeyState, &shellCode, sizeof(shellCode));");
-		WriteToFile(resultFileName, "		*(uintptr_t*)pReturnAddress = (uintptr_t)((uintptr_t)&" + GetAsyncKeyStateFuncName + " + 0x11111111);");
-		WriteToFile(resultFileName, "		*(uintptr_t*)((uintptr_t)&" + GetAsyncKeyStateFuncName + " + 0x22222222) = (uintptr_t)poorVGetAsyncKeyState;");
-		WriteToFile(resultFileName, "	}");
-		WriteToFile(resultFileName, "	__nop(); __nop(); __nop(); __nop(); __nop(); __nop(); // jmp rbx");
-		WriteToFile(resultFileName, "	__nop(); __nop(); __nop(); __nop(); __nop(); __nop(); __nop(); __nop(); // shellcodeptr");
-		WriteToFile(resultFileName, "	__nop(); // <- ret here");
-		WriteToFile(resultFileName, "	return 0;");
-		WriteToFile(resultFileName, "}");
-		WriteToFile(resultFileName, "#endif");
-		WriteToFile(resultFileName, "");
-		cout << " - [" << dye::aqua("GetAsyncKeyState") << "] - Created function: " << dye::light_green(GetAsyncKeyStateFuncName) << endl;
-
 		vector<string> addedFuncs;
 		for (auto [iRVA, instructions] : instructionsToReplace) {
 			for (auto inst : instructions) {
@@ -1110,7 +1093,7 @@ int main(int argc, char* argv[])
 
 		memset(&clProc, 0, sizeof(clProc));
 
-		if (CreateProcessW((LPWSTR)clPath.c_str(), (LPWSTR)L" EACHide.cpp /nologo /permissive- /GS- /GL /Gy /Zc:wchar_t /Zi /Gm- /O2 /Zc:inline /fp:precise /Zc:forScope /Gd /Oi /MT /FC ", NULL, NULL, TRUE, CREATE_UNICODE_ENVIRONMENT, pEnv, (currentPath + L"\\EACHide\\").c_str(), &si, &clProc))
+		if (CreateProcessW((LPWSTR)clPath.c_str(), (LPWSTR)L" EACHide.cpp /nologo /permissive- /GS- /GL /Gy /Zc:wchar_t /Z7 /Gm- /Ot /O2 /Zc:inline /fp:precise /Zc:forScope /Gd /Oi /MT /FC ", NULL, NULL, TRUE, CREATE_UNICODE_ENVIRONMENT, pEnv, (currentPath + L"\\EACHide\\").c_str(), &si, &clProc))
 		{
 			cout << " - "; // lifehack
 			m_hreadDataFromExtProgram = CreateThread(0, 0, readDataFromExtProgram, NULL, 0, NULL);
@@ -1214,10 +1197,13 @@ int main(int argc, char* argv[])
 		uint32_t backwardOffset = 32;
 		std::map<uint32_t, Function> addedFunctions;
 		{
-			Function* GetAsyncKeyStateFunc = GetFunctionByName(GetAsyncKeyStateFuncName, c_Functions);
-			if (GetAsyncKeyStateFunc) { // GetAsyncKeyState	
-				InsertFunction(o_exeFile, c_exeFile, GetAsyncKeyStateFunc, offset, backwardOffset, addedFunctions);
-			}
+			unsigned char getAsyncKeyStateFunc[] = {
+				0x49, 0x89, 0xCA,
+				0xB8, 0x3F, 0x10, 0x00, 0x00, //getasynckeystate
+				0x0F, 0x05,  //syscall
+				0xc3 // ret
+			};
+			InsertByteFunction(o_exeFile, GetAsyncKeyStateFuncName, getAsyncKeyStateFunc, sizeof(getAsyncKeyStateFunc), offset);			
 		}
 		{
 			for (auto [iRVA, instructions] : instructionsToReplace) {
@@ -1228,7 +1214,7 @@ int main(int argc, char* argv[])
 						if (!GetFunctionByName(newFuncName))
 							if (Function* newFunction = GetFunctionByName(newFuncName, c_Functions)) { // Replacing
 
-								InsertFunction(o_exeFile, c_exeFile, newFunction, offset, backwardOffset, addedFunctions);
+								CopyFunction(o_exeFile, c_exeFile, newFunction, offset, backwardOffset, addedFunctions);
 
 							}
 					}
@@ -1249,85 +1235,7 @@ int main(int argc, char* argv[])
 
 	cout << endl;
 	{
-
 		Function* GetAsyncKeyStateFunc = GetFunctionByName(GetAsyncKeyStateFuncName);
-		if (GetAsyncKeyStateFunc) {
-			char* funcPtr = o_exeFile + RVA2Offset(GetAsyncKeyStateFunc->RVA);
-			{ // save rcx
-				char code[] = { 0x49, 0x89, 0xCF, 0x53, 0xEB, 0x02, 0xEB, 0xF8 };
-				memcpy(funcPtr - sizeof(code) + 2, &code, sizeof(code));
-			}
-
-			int firstNop = 0;
-			uint64_t firstNopOffset = 0;
-			int lastNop = 0;
-			uint64_t lastNopOffset;
-			uint64_t offset = 0;
-			for (int i = 0; i < GetAsyncKeyStateFunc->instructions.size() - 1; i++) {
-				auto inst = GetAsyncKeyStateFunc->instructions[i];
-				auto nextInst = GetAsyncKeyStateFunc->instructions[i + 1];
-				if (inst.info.opcode == 0x90) {
-					if (firstNop == 0) {
-						firstNop = i;
-						firstNopOffset = offset;
-					}
-
-					if (nextInst.info.opcode != 0x90) {
-						lastNop = i;
-						lastNopOffset = offset + inst.info.length;
-						break;
-					}
-				}
-				offset += inst.info.length;
-			}
-
-			*(short*)(funcPtr + firstNopOffset) = 0x25FF;
-			*(int*)(funcPtr + firstNopOffset + 2) = 0;
-
-			offset = 0;
-			for (int i = 0; i < GetAsyncKeyStateFunc->instructions.size(); i++) {
-				auto inst = GetAsyncKeyStateFunc->instructions[i];
-				XEDPARSE xed;
-				memset(&xed, 0, sizeof(xed));
-				xed.x64 = true;
-				if (string(inst.text).find("0x11111111") != string::npos) {
-					strcpy(xed.instr, ReplaceAll(inst.text, "0x11111111", "0x" + to_hex(lastNopOffset)).c_str());
-					if (XEDParseAssemble(&xed)) {
-						memset(funcPtr + offset, 0x90, inst.info.length);
-						memcpy(funcPtr + offset, &xed.dest, xed.dest_size);
-					}
-					else {
-						// cancel getasynckeystate
-					}
-				}
-				else if (string(inst.text).find("0x22222222") != string::npos) {
-					strcpy(xed.instr, ReplaceAll(inst.text, "0x22222222", "0x" + to_hex(firstNopOffset + 6)).c_str());
-					if (XEDParseAssemble(&xed)) {
-						memset(funcPtr + offset, 0x90, inst.info.length);
-						memcpy(funcPtr + offset, &xed.dest, xed.dest_size);
-					}
-					else {
-						// cancel getasynckeystate
-					}
-				}
-				else if (string(inst.text).find("0x9999999") != string::npos) {
-					auto str = to_hex(GetAsyncKeyStateFunc->Size);
-					strcpy(xed.instr, ReplaceAll(inst.text, "0x9999999", "0x" + str).c_str());
-					if (XEDParseAssemble(&xed)) {
-						memset(funcPtr + offset, 0x90, inst.info.length);
-						memcpy(funcPtr + offset, &xed.dest, xed.dest_size);
-					}
-					else {
-						// cancel getasynckeystate
-					}
-				}
-				else if (inst.info.mnemonic == ZYDIS_MNEMONIC_XOR && inst.operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER && inst.operands[0].reg.value == ZYDIS_REGISTER_EAX && inst.operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER && inst.operands[1].reg.value == ZYDIS_REGISTER_EAX) { // remove xor eax, eax
-					memset(funcPtr + offset, 0x90, inst.info.length);
-				}
-				offset += inst.info.length;
-			}
-		}
-
 		for (auto [iRVA, instructions] : instructionsToReplace) {
 			for (auto inst : instructions) {
 				Function* func = inst.function;
