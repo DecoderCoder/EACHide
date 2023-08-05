@@ -373,6 +373,13 @@ void InsertByteFunction(char* o_exeFile, string funcName, unsigned char* code, u
 	offset += codeSize + 8 + codeSize % 16;
 }
 
+
+#ifndef _DEBUG
+#define { exit(code) system("pause"); return code }
+#else
+#define exit(code) return code;
+#endif
+
 int main(int argc, char* argv[])
 {
 	if (argc == 1)
@@ -395,7 +402,7 @@ int main(int argc, char* argv[])
 			winDrive += buff[2];
 		}
 		else
-			return 0;
+			exit(ERROR_NOT_ENOUGH_MEMORY);
 		wstring visualStudioPathes[] = { // from newest to oldest
 			L"Program Files\\Microsoft Visual Studio\\2022",
 			L"Program Files (x86)\\Microsoft Visual Studio\\2019"
@@ -438,7 +445,7 @@ int main(int argc, char* argv[])
 
 	if (clPath.empty()) {
 		cout << "msvc compiler not found" << endl;
-		return 0;
+		exit(ERROR_FILE_NOT_FOUND);
 	}
 
 	//string GMHBaseModule = "";
@@ -482,13 +489,16 @@ int main(int argc, char* argv[])
 	cout << endl;
 
 	if (!fs::exists(exeFileName) || !fs::exists(pdbFileName))
-		return -1;
+		exit(ERROR_FILE_NOT_FOUND);
 
 	int o_pdbFileSize = 0;
 	char* o_pdbFile = ReadAllBytes(pdbFileName, &o_pdbFileSize);
 
 	if (IsError(PDB::ValidateFile(o_pdbFile)))
-		return -1;
+	{
+		cout << "Input pdb validation failed";
+		exit(ERROR_UNHANDLED_ERROR);
+	}
 
 	int o_exeFileSize = 0;
 	char* o_exeFile = ReadAllBytes(exeFileName, &o_exeFileSize);
@@ -511,7 +521,10 @@ int main(int argc, char* argv[])
 		PIMAGE_FILE_HEADER file_header = (PIMAGE_FILE_HEADER)(o_exeFile + dos_header->e_lfanew + sizeof(nt_header->Signature));
 		PIMAGE_OPTIONAL_HEADER optional_header = (PIMAGE_OPTIONAL_HEADER)(o_exeFile + dos_header->e_lfanew + sizeof(nt_header->Signature) + sizeof(nt_header->FileHeader));
 		if (optional_header->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) // Only X64
-			return -1;
+		{
+			cout << "Supports only x64 application";
+			exit(0);
+		}
 		//file_header->NumberOfSections
 
 		newSectionHeader = (PIMAGE_SECTION_HEADER)(IMAGE_FIRST_SECTION(nt_header)) + file_header->NumberOfSections;
@@ -792,13 +805,13 @@ int main(int argc, char* argv[])
 		if (!CreatePipe(&m_hChildStd_OUT_Rd, &m_hChildStd_OUT_Wr, &saAttr, 0))
 		{
 			// log error
-			return HRESULT_FROM_WIN32(GetLastError());
+			return GetLastError();
 		}
 
 		if (!SetHandleInformation(m_hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
 		{
 			// log error
-			return HRESULT_FROM_WIN32(GetLastError());
+			return GetLastError();
 		}
 
 		memset(&si, 0, sizeof(si));
@@ -833,14 +846,14 @@ int main(int argc, char* argv[])
 #endif
 			}
 
-		}
+			}
 		else {
 			cout << hue::black_on_red << " Failed to run MSVC: " << GetLastError() << " " << hue::reset << endl;
 			return GetLastError();
 		}
 
 		cout << endl;
-	}
+		}
 
 	{
 		cout << "[Analyzing compiled code]" << endl;
@@ -849,7 +862,10 @@ int main(int argc, char* argv[])
 		char* c_pdbFile = ReadAllBytes(currentPath + L"\\EACHide\\EACHide.pdb", &c_pdbFileSize);
 
 		if (IsError(PDB::ValidateFile(c_pdbFile)))
-			return -1;
+		{
+			cout << "Compiled file's pdb validation failed";
+			exit(ERROR_UNHANDLED_ERROR);
+		}
 
 		int c_exeFileSize = 0;
 		char* c_exeFile = ReadAllBytes(currentPath + L"\\EACHide\\EACHide.exe", &c_exeFileSize);
@@ -919,7 +935,7 @@ int main(int argc, char* argv[])
 				0x0F, 0x05,  //syscall
 				0xc3 // ret
 			};
-			InsertByteFunction(o_exeFile, GetAsyncKeyStateFuncName, getAsyncKeyStateFunc, sizeof(getAsyncKeyStateFunc), offset);			
+			InsertByteFunction(o_exeFile, GetAsyncKeyStateFuncName, getAsyncKeyStateFunc, sizeof(getAsyncKeyStateFunc), offset);
 		}
 		{
 			for (auto [iRVA, instructions] : instructionsToReplace) {
@@ -1037,9 +1053,8 @@ int main(int argc, char* argv[])
 
 	cout << dec << "	Complete (" << replaced << "/" << haveToReplace << ")" << endl << hue::reset << endl;
 
-
 #ifndef _DEBUG
 	system("pause");
 #endif
-	return 0;
-}
+	return ERROR_SUCCESS;
+	}
