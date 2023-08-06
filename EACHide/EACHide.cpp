@@ -293,8 +293,8 @@ void dissasemble_function(char* exeFile, Function& func)
 	}
 }
 
-void fix_function_calls(char* o_exeFile, Function& func, uint32_t oRVA) {
-	for (auto& inst : func.instructions) {
+void fix_function_calls(char* o_exeFile, Function* func, uint32_t oRVA) {
+	for (auto& inst : func->instructions) {
 		if (inst.info.mnemonic == ZYDIS_MNEMONIC_CALL) {
 			int offset;
 			if (inst.operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY)
@@ -303,7 +303,7 @@ void fix_function_calls(char* o_exeFile, Function& func, uint32_t oRVA) {
 				offset = inst.operands[0].imm.value.s;
 			else
 				continue;
-			uint32_t oldRVA = oRVA + offset + inst.info.length + (inst.runtime_address - func.RVA);
+			uint32_t oldRVA = oRVA + offset + inst.info.length + (inst.runtime_address - func->RVA);
 			Function* oldFunc = GetFunctionByRVA(oldRVA, c_Functions);
 			if (!oldFunc)
 				continue;
@@ -341,7 +341,7 @@ void fix_function_calls(char* o_exeFile, Function& func, uint32_t oRVA) {
 	}
 }
 
-void CopyFunction(char* o_exeFile, char* c_exeFile, Function* oldFunc, uint32_t& offset, uint32_t& backwardOffset, std::map<uint32_t, Function>& addedFunctions) {
+Function* CopyFunction(char* o_exeFile, char* c_exeFile, Function* oldFunc, uint32_t& offset, uint32_t& backwardOffset) {
 	memcpy(o_exeFile + newSectionHeader->PointerToRawData + offset, c_exeFile + RVA2Offset(oldFunc->RVA, c_Sections), oldFunc->Size);
 	auto RVA = Offset2RVA(newSectionHeader->PointerToRawData + offset);
 
@@ -353,13 +353,13 @@ void CopyFunction(char* o_exeFile, char* c_exeFile, Function* oldFunc, uint32_t&
 	newGetAsyncKeyState.RVA = RVA;
 	newGetAsyncKeyState.Size = oldFunc->Size;
 	dissasemble_function(o_exeFile, newGetAsyncKeyState);
-
 	o_Functions.push_back(newGetAsyncKeyState);
-	addedFunctions[oldFunc->RVA] = newGetAsyncKeyState;
+
 	offset += oldFunc->Size + 8 + oldFunc->Size % 16;
+	return &o_Functions[o_Functions.size() - 1];
 }
 
-void InsertByteFunction(char* o_exeFile, string funcName, unsigned char* code, uint32_t codeSize, uint32_t& offset) {
+Function* InsertByteFunction(char* o_exeFile, string funcName, unsigned char* code, uint32_t codeSize, uint32_t& offset) {
 	memcpy(o_exeFile + newSectionHeader->PointerToRawData + offset, code, codeSize);
 
 	auto RVA = Offset2RVA(newSectionHeader->PointerToRawData + offset);
@@ -369,8 +369,31 @@ void InsertByteFunction(char* o_exeFile, string funcName, unsigned char* code, u
 	func.RVA = RVA;
 	func.Size = codeSize;
 	o_Functions.push_back(func);
-
 	offset += codeSize + 8 + codeSize % 16;
+	return &o_Functions[o_Functions.size() - 1];
+}
+
+bool SwapCall(char* o_exeFile, ZydisDisassembledInstruction inst, uint32_t instRVA, Function* newFunc) {
+	ZydisEncoderRequest req;
+	memset(&req, 0, sizeof(req));
+
+	req.mnemonic = ZYDIS_MNEMONIC_CALL;
+	req.machine_mode = ZYDIS_MACHINE_MODE_LONG_64;
+	req.operand_count = 1;
+	req.operands[0].type = ZYDIS_OPERAND_TYPE_IMMEDIATE;
+	uint32_t currentRVA = instRVA;
+	int callFunction = newFunc->RVA - currentRVA - 5;
+	req.operands[0].imm.u = callFunction;
+	ZyanU8 encoded_instruction[ZYDIS_MAX_INSTRUCTION_LENGTH];
+	ZyanUSize encoded_length = sizeof(encoded_instruction);
+	if (ZYAN_FAILED(ZydisEncoderEncodeInstruction(&req, encoded_instruction, &encoded_length)))
+	{
+		return false;
+	}
+	char* dest = o_exeFile + RVA2Offset(instRVA);
+	memset(dest, 0x90, inst.info.length);
+	memcpy(dest, &encoded_instruction, encoded_length);
+	return true;
 }
 
 
@@ -604,11 +627,15 @@ int main(int argc, char* argv[])
 			continue;
 		if (func.Name.find("__imp_GetModuleHandleW") != string::npos) {
 			FunctionsToReplace[func.RVA] = FunctionToReplace{ "__imp_GetModuleHandleW", func.RVA, func, ReplaceInstructionType::GetModuleHandle };
-			cout << " - Found " << dye::light_red(func.Name) << " at 0x" << hex << func.RVA << endl;
+			cout << " - Found " << dye::light_red(func.Name) << endl;
 		}
 		else if (func.Name.find("__imp_GetAsyncKeyState") != string::npos) {
 			FunctionsToReplace[func.RVA] = FunctionToReplace{ "__imp_GetAsyncKeyState", func.RVA, func, ReplaceInstructionType::GetAsyncKeyState };
-			cout << " - Found " << dye::light_red(func.Name) << " at 0x" << hex << func.RVA << endl;
+			cout << " - Found " << dye::light_red(func.Name) << endl;
+		}
+		else if (func.Name.find("__imp_VirtualProtect") != string::npos) {
+			FunctionsToReplace[func.RVA] = FunctionToReplace{ "__imp_VirtualProtect", func.RVA, func, ReplaceInstructionType::VirtualProtect };
+			cout << " - Found " << dye::light_red(func.Name) << endl;
 		}
 	}
 
@@ -637,6 +664,7 @@ int main(int argc, char* argv[])
 							rep.instructionPlace = i;
 							rep.i = instruction;
 							rep.offset = offset;
+							rep.RVA = rep.function->RVA + offset;
 							rep.type = rFunc.Type;
 							instructionsToReplace[fRVA].push_back(rep);
 							haveToReplace++;
@@ -709,8 +737,16 @@ int main(int argc, char* argv[])
 	//}
 
 	cout << endl << "[Genereting functions]" << endl;
+#define ADD_DUMB_FUNC(n) \
+		WriteToFile(resultFileName, "#pragma comment(linker, \"/include:DUMB_FN_"#n"\")"); \
+		WriteToFile(resultFileName, "EXTERN_C __declspec(noinline) void DUMB_FN_"#n"() { main(); }"); \
+		WriteToFile(resultFileName, "");
 
-	string GetAsyncKeyStateFuncName = "_" + hashString("EACGetAsyncKeyState") + "_" + hashString(exeName);
+
+	string GetAsyncKeyStateFuncName = "EACGetAsyncKeyState";
+	string VirtualProtectFuncName = "EACVirtualProtect";
+	string NtVirtualProtectMemoryFuncName = "NtVirtualProtectMemory";
+	if (false)
 	{ // Generating
 		wstring resultFileName = currentPath + L"\\EACHide\\EACHide.cpp";
 		fs::create_directories(fs::path(resultFileName).parent_path());
@@ -720,7 +756,43 @@ int main(int argc, char* argv[])
 		WriteToFile(resultFileName, "#include <Windows.h>");
 		WriteToFile(resultFileName, "#include \"LazyImporter.hpp\"");
 		WriteToFile(resultFileName, "");
+		WriteToFile(resultFileName, "typedef NTSTATUS(__stdcall* NtProtectVirtualMemory)(_In_ HANDLE ProcessHandle, _Inout_ PVOID* BaseAddress, _Inout_ PSIZE_T RegionSize, _In_ ULONG 	NewProtect, _Out_ PULONG OldProtect);");
+		WriteToFile(resultFileName, "");
+		WriteToFile(resultFileName, "int main();");
+		WriteToFile(resultFileName, "");
+		/*ADD_DUMB_FUNC(1);
+		ADD_DUMB_FUNC(2);
+		ADD_DUMB_FUNC(3);*/
+		//WriteToFile(resultFileName, "#pragma comment(linker, \"/include:" + VirtualProtectFuncName + "\")"); // compiler is messing with variables and pointers to arguments
+		//WriteToFile(resultFileName, "EXTERN_C __declspec(noinline) bool " + VirtualProtectFuncName + "(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect) {");
+		//WriteToFile(resultFileName, "	SIZE_T MemoryLength = dwSize; // [rsp+50h] [rbp+8h] BYREF");
+		//WriteToFile(resultFileName, "	PVOID MemoryCache = lpAddress; // [rsp+58h] [rbp+10h] BYREF");	
+		//WriteToFile(resultFileName, "	return ((NtProtectVirtualMemory)(DUMB_FN_1))((HANDLE)-1, &MemoryCache, &MemoryLength, flNewProtect, lpflOldProtect);");
+		//WriteToFile(resultFileName, "}");
 
+		//WriteToFile(resultFileName, "typedef BOOLEAN(__stdcall* RtlFlushSecureMemoryCache)(PVOID MemoryCache, SIZE_T MemoryLength);");
+		//WriteToFile(resultFileName, "");
+
+		//WriteToFile(resultFileName, "#pragma comment(linker, \"/include:" + VirtualProtectFuncName + "\")");
+		//WriteToFile(resultFileName, "EXTERN_C __declspec(noinline) bool " + VirtualProtectFuncName + "(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect) {");
+		//WriteToFile(resultFileName, "	SIZE_T MemoryLength = dwSize; // [rsp+50h] [rbp+8h] BYREF");
+		//WriteToFile(resultFileName, "	PVOID MemoryCache = lpAddress; // [rsp+58h] [rbp+10h] BYREF");
+		//WriteToFile(resultFileName, "");
+		//WriteToFile(resultFileName, "	NTSTATUS v6 = ((NtProtectVirtualMemory)(DUMB_FN_1))((HANDLE)-1, (PVOID*)&lpAddress, &MemoryLength, flNewProtect, lpflOldProtect);");
+		//WriteToFile(resultFileName, "	if (v6 >= 0)");
+		//WriteToFile(resultFileName, "		return true;");
+		//WriteToFile(resultFileName, "	if (v6 == 0xC0000045)");
+		//WriteToFile(resultFileName, "	{");
+		//WriteToFile(resultFileName, "		if (((RtlFlushSecureMemoryCache)(DUMB_FN_2))(MemoryCache, MemoryLength))");
+		//WriteToFile(resultFileName, "		{");
+		//WriteToFile(resultFileName, "			if (((NtProtectVirtualMemory)(DUMB_FN_3))((HANDLE)-1, (PVOID*)&lpAddress, &MemoryLength, flNewProtect, lpflOldProtect) >= 0)");
+		//WriteToFile(resultFileName, "				return 1;");
+		//WriteToFile(resultFileName, "		}");
+		//WriteToFile(resultFileName, "	}");
+		//WriteToFile(resultFileName, "	return 0;");
+		//WriteToFile(resultFileName, "}");
+
+		WriteToFile(resultFileName, "");
 		vector<string> addedFuncs;
 		for (auto [iRVA, instructions] : instructionsToReplace) {
 			for (auto inst : instructions) {
@@ -761,6 +833,8 @@ int main(int argc, char* argv[])
 
 		WriteToFile(resultFileName, "int main() {}");
 		cout << endl;
+#undef ADD_DUMB_FUNC
+#undef DUMB_FUNC
 	}
 
 	// Compiling code
@@ -822,7 +896,7 @@ int main(int argc, char* argv[])
 
 		memset(&clProc, 0, sizeof(clProc));
 
-		if (CreateProcessW((LPWSTR)clPath.c_str(), (LPWSTR)L" EACHide.cpp /nologo /permissive- /GS- /GL /Gy /Zc:wchar_t /Z7 /Gm- /Ot /O2 /Zc:inline /fp:precise /Zc:forScope /Gd /Oi /MT /FC ", NULL, NULL, TRUE, CREATE_UNICODE_ENVIRONMENT, pEnv, (currentPath + L"\\EACHide\\").c_str(), &si, &clProc))
+		if (CreateProcessW((LPWSTR)clPath.c_str(), (LPWSTR)L" EACHide.cpp /nologo /permissive- /GS- /Gy /Zc:wchar_t /Z7 /Gm- /GL /Ot /O2 /Oi /sdl- /Zc:inline /fp:precise /Zc:forScope /Gd /Oi /MT /FC ", NULL, NULL, TRUE, CREATE_UNICODE_ENVIRONMENT, pEnv, (currentPath + L"\\EACHide\\").c_str(), &si, &clProc))
 		{
 			cout << " - "; // lifehack
 			m_hreadDataFromExtProgram = CreateThread(0, 0, readDataFromExtProgram, NULL, 0, NULL);
@@ -846,7 +920,7 @@ int main(int argc, char* argv[])
 #endif
 			}
 
-			}
+		}
 		else {
 			cout << hue::black_on_red << " Failed to run MSVC: " << GetLastError() << " " << hue::reset << endl;
 			return GetLastError();
@@ -927,7 +1001,7 @@ int main(int argc, char* argv[])
 
 		uint32_t offset = 32;
 		uint32_t backwardOffset = 32;
-		std::map<uint32_t, Function> addedFunctions;
+		std::map<uint32_t, Function*> addedFunctions;
 		{
 			unsigned char getAsyncKeyStateFunc[] = {
 				0x49, 0x89, 0xCA,
@@ -937,6 +1011,45 @@ int main(int argc, char* argv[])
 			};
 			InsertByteFunction(o_exeFile, GetAsyncKeyStateFuncName, getAsyncKeyStateFunc, sizeof(getAsyncKeyStateFunc), offset);
 		}
+
+		if (Function* virtualProtectFunc = GetFunctionByName(VirtualProtectFuncName, c_Functions))
+		{
+			unsigned char NtProtectVirtualMemoryFunc[] = {
+				0x4C, 0x8B, 0xD1,
+				0xB8, 0x50, 0x00, 0x00, 0x00, //ntprotectvirtualmemory
+				0x0F, 0x05,  //syscall
+				0xC3 // ret
+			};
+
+			unsigned char VirtualProtectFunc[] = { 
+				0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x18, 0x55, 0x56, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x49, 0x8B, 0xF1, 0x4C, 0x89, 0x48, 0xD8, 0x45, 0x8B, 0xC8, 0x48, 0x89, 0x50, 0x08, 0x41, 0x8B, 0xE8, 0x48, 0x89, 0x48, 0x10, 0x4C, 0x8D, 0x40, 0x08, 0x48, 0x83, 0xC9, 0xFF, 0x48, 0x8D, 0x50, 0x10, 
+				0xE8, 0x90, 0x90, 0x90, 0x90,
+				0x0F, 0x1F, 0x44, 0x00, 0x00, 0x33, 0xDB, 0xBB, 0x01, 0x00, 0x00, 0x00, 0x8B, 0xC3, 0x48, 0x8B, 0x5C, 0x24, 0x60, 0x48, 0x83, 0xC4, 0x30, 0x5F, 0x5E, 0x5D, 0xC3 };
+			Function* ntProtectVirtualMemoryFunc = InsertByteFunction(o_exeFile, NtVirtualProtectMemoryFuncName, NtProtectVirtualMemoryFunc, sizeof(NtProtectVirtualMemoryFunc), offset);
+			Function* newVirtualProtectFunc = InsertByteFunction(o_exeFile, VirtualProtectFuncName, VirtualProtectFunc, sizeof(VirtualProtectFunc), offset);
+
+			uint32_t callRVA = 0x2F;
+			int jmpOffset = ntProtectVirtualMemoryFunc->RVA - newVirtualProtectFunc->RVA - callRVA - 5; // call size
+			*(int*)(o_exeFile + RVA2Offset(newVirtualProtectFunc->RVA) + callRVA + 1) = jmpOffset;
+
+			//Function* newFunc = CopyFunction(o_exeFile, c_exeFile, virtualProtectFunc, offset, backwardOffset);
+
+			//uint32_t iOffset = 0;
+			//for (auto& inst : newFunc->instructions) {
+			//	if (inst.info.mnemonic == ZYDIS_MNEMONIC_CALL && inst.operands[0].type == ZYDIS_OPERAND_TYPE_IMMEDIATE) { // check is it self call					
+			//		string oldFnName = GetFunctionByRVA(virtualProtectFunc->RVA + iOffset + inst.operands[0].imm.value.s + inst.info.length, c_Functions)->Name;
+			//		if (oldFnName == "DUMB_FN_1" || oldFnName == "DUMB_FN_3") {
+			//			SwapCall(o_exeFile, inst, newFunc->RVA + iOffset, ntProtectVirtualMemoryFunc);
+			//		}
+			//		else if (oldFnName == "DUMB_FN_2") {
+
+			//		}
+			//		//SwapCall(o_exeFile, inst, newFunc->RVA + iOffset, ntProtectVirtualMemoryFunc);
+			//	}
+			//	iOffset += inst.info.length;
+			//}
+		}
+
 		{
 			for (auto [iRVA, instructions] : instructionsToReplace) {
 				for (auto inst : instructions) {
@@ -944,10 +1057,8 @@ int main(int argc, char* argv[])
 					if (inst.type == ReplaceInstructionType::GetModuleHandle) {
 						string newFuncName = "_" + hashString(inst.getAsyncKeyState.moduleName);
 						if (!GetFunctionByName(newFuncName))
-							if (Function* newFunction = GetFunctionByName(newFuncName, c_Functions)) { // Replacing
-
-								CopyFunction(o_exeFile, c_exeFile, newFunction, offset, backwardOffset, addedFunctions);
-
+							if (Function* newFunction = GetFunctionByName(newFuncName, c_Functions)) { // Replacing								
+								addedFunctions[newFunction->RVA] = CopyFunction(o_exeFile, c_exeFile, newFunction, offset, backwardOffset);
 							}
 					}
 				}
@@ -972,73 +1083,39 @@ int main(int argc, char* argv[])
 			for (auto inst : instructions) {
 				Function* func = inst.function;
 				if (GetAsyncKeyStateFunc && inst.type == ReplaceInstructionType::GetAsyncKeyState) {
-					ZydisEncoderRequest req;
-					memset(&req, 0, sizeof(req));
-
-					req.mnemonic = ZYDIS_MNEMONIC_CALL;
-					req.machine_mode = ZYDIS_MACHINE_MODE_LONG_64;
-					req.operand_count = 1;
-					req.operands[0].type = ZYDIS_OPERAND_TYPE_IMMEDIATE;
-
-					uint32_t currentRVA = func->RVA + inst.offset;
-					int callFunction = GetAsyncKeyStateFunc->RVA - currentRVA - 5;
-
-					req.operands[0].imm.u = callFunction;
-
-					ZyanU8 encoded_instruction[ZYDIS_MAX_INSTRUCTION_LENGTH];
-					ZyanUSize encoded_length = sizeof(encoded_instruction);
-
-					if (ZYAN_FAILED(ZydisEncoderEncodeInstruction(&req, encoded_instruction, &encoded_length)))
-					{
-						cout << dye::light_red("Failed") << " to replace " << dye::yellow("GetAsyncKeyState") << " function" << endl;
-						continue;
+					if (SwapCall(o_exeFile, inst.i, inst.RVA, GetAsyncKeyStateFunc)) {
+						cout << " - [" << dye::aqua(" GetAsyncKeyState ") << "] - Success replaced call in " << dye::light_aqua(func->Name) << "!" << endl;
 					}
-
-					char* dest = o_exeFile + RVA2Offset(func->RVA + inst.offset);
-					memset(dest, 0x90, inst.i.info.length);
-					memcpy(dest, &encoded_instruction, encoded_length);
-
-					cout << " - [" << dye::aqua("GetAsyncKeyState") << "] - Success replaced call in " << dye::light_aqua(func->Name) << "!" << endl;
+					else {
+						cout << dye::light_red("Failed") << " to replace " << dye::yellow("GetAsyncKeyState") << " function" << endl;
+					}
 					replaced++;
 				}
-				else if (inst.type == ReplaceInstructionType::GetModuleHandle) { // GetModuleHandle					
-					{
-						string newFuncName = "_" + hashString(inst.getAsyncKeyState.moduleName);
-						if (Function* newFunction = GetFunctionByName(newFuncName)) { // Replacing
-
-							ZydisEncoderRequest req;
-							memset(&req, 0, sizeof(req));
-
-							req.mnemonic = ZYDIS_MNEMONIC_CALL;
-							req.machine_mode = ZYDIS_MACHINE_MODE_LONG_64;
-							req.operand_count = 1;
-							req.operands[0].type = ZYDIS_OPERAND_TYPE_IMMEDIATE;
-
-							uint32_t currentRVA = func->RVA + inst.offset;
-							int callFunction = newFunction->RVA - currentRVA - 5;
-
-							req.operands[0].imm.u = callFunction;
-
-							ZyanU8 encoded_instruction[ZYDIS_MAX_INSTRUCTION_LENGTH];
-							ZyanUSize encoded_length = sizeof(encoded_instruction);
-
-							if (ZYAN_FAILED(ZydisEncoderEncodeInstruction(&req, encoded_instruction, &encoded_length)))
-							{
-								cout << dye::light_red("Failed") << " to generate " << dye::yellow(newFuncName) << " function" << endl;
-								continue;
-							}
-
-							char* dest = o_exeFile + RVA2Offset(func->RVA + inst.offset);
-							memset(dest, 0x90, inst.i.info.length);
-							memcpy(dest, &encoded_instruction, encoded_length);
-
-							cout << " - [" << dye::aqua("GetModuleHandle") << "]  - Success replaced call " << dye::light_green(newFuncName) << " function in " << dye::light_aqua(func->Name) << "!" << endl;
-							replaced++;
-						}
+				else if (inst.type == ReplaceInstructionType::GetModuleHandle) { // GetModuleHandle
+					string newFuncName = "_" + hashString(inst.getAsyncKeyState.moduleName);
+					if (Function* newFunction = GetFunctionByName(newFuncName)) { // Replacing
+						if (SwapCall(o_exeFile, inst.i, inst.RVA, newFunction)) {
+							cout << " - [" << dye::aqua(" GetModuleHandle ") << "] - Success replaced call " << dye::light_green(newFuncName) << " function in " << dye::light_aqua(func->Name) << "!" << endl;
 					}
+						else {
+							cout << dye::light_red("Failed") << " to replace " << dye::yellow(newFuncName) << " function" << endl;
+						}
+						replaced++;
 				}
 			}
+				else if (inst.type == ReplaceInstructionType::VirtualProtect) {
+					if (Function* newFunction = GetFunctionByName(VirtualProtectFuncName)) { // Replacing
+						if (SwapCall(o_exeFile, inst.i, inst.RVA, newFunction)) {
+							cout << " - [" << dye::aqua(" VirtualProtect ") << "] - Success replaced call in " << dye::light_aqua(func->Name) << "!" << endl;
+						}
+						else {
+							cout << dye::light_red("Failed") << " to replace " << dye::yellow("VirtualProtect") << " function" << endl;
+						}
+						replaced++;
+					}
+				}
 		}
+	}
 	}
 	if (fs::exists(newExeFileName))
 		fs::remove(newExeFileName);
@@ -1057,4 +1134,4 @@ int main(int argc, char* argv[])
 	system("pause");
 #endif
 	return ERROR_SUCCESS;
-	}
+}

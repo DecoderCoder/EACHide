@@ -58,6 +58,7 @@ public:
 enum class ReplaceInstructionType {
 	GetModuleHandle,
 	GetAsyncKeyState,
+	VirtualProtect,
 };
 
 class FunctionToReplace {
@@ -81,6 +82,7 @@ public:
 	uint64_t instructionPlace;
 	ZydisDisassembledInstruction i;
 	ZyanUSize offset;
+	uint32_t RVA;
 	ReplaceInstructionType type;
 	Function* function;
 
