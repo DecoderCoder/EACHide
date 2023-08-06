@@ -513,7 +513,7 @@ int main(int argc, char* argv[])
 
 	cout << setw(width) << "Input file" << ": " << exeFileName << endl;
 	cout << setw(width) << "Pdb file" << ": " << pdbFileName << endl;
-	cout << setw(width) << "Output file" << ": " << newExeFileName << endl;	
+	cout << setw(width) << "Output file" << ": " << newExeFileName << endl;
 	cout << setw(width) << "Current path" << ": " << currentPath.string() << endl;
 	cout << endl;
 
@@ -932,7 +932,12 @@ int main(int argc, char* argv[])
 		}
 
 		cout << endl;
-		}
+	}
+
+	if (!fs::exists(currentPath.wstring() + L"\\EACHide\\EACHide.pdb")) {
+		cout << "Compiled files not found" << endl;
+		exit(ERROR_FILE_NOT_FOUND);
+	}
 
 	{
 		cout << "[Analyzing compiled code]" << endl;
@@ -1016,8 +1021,7 @@ int main(int argc, char* argv[])
 			};
 			InsertByteFunction(o_exeFile, GetAsyncKeyStateFuncName, getAsyncKeyStateFunc, sizeof(getAsyncKeyStateFunc), offset);
 		}
-
-		if (Function* virtualProtectFunc = GetFunctionByName(VirtualProtectFuncName, c_Functions))
+		
 		{
 			unsigned char NtProtectVirtualMemoryFunc[] = {
 				0x4C, 0x8B, 0xD1,
@@ -1026,8 +1030,8 @@ int main(int argc, char* argv[])
 				0xC3 // ret
 			};
 
-			unsigned char VirtualProtectFunc[] = { 
-				0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x18, 0x55, 0x56, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x49, 0x8B, 0xF1, 0x4C, 0x89, 0x48, 0xD8, 0x45, 0x8B, 0xC8, 0x48, 0x89, 0x50, 0x08, 0x41, 0x8B, 0xE8, 0x48, 0x89, 0x48, 0x10, 0x4C, 0x8D, 0x40, 0x08, 0x48, 0x83, 0xC9, 0xFF, 0x48, 0x8D, 0x50, 0x10, 
+			unsigned char VirtualProtectFunc[] = {
+				0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x18, 0x55, 0x56, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x49, 0x8B, 0xF1, 0x4C, 0x89, 0x48, 0xD8, 0x45, 0x8B, 0xC8, 0x48, 0x89, 0x50, 0x08, 0x41, 0x8B, 0xE8, 0x48, 0x89, 0x48, 0x10, 0x4C, 0x8D, 0x40, 0x08, 0x48, 0x83, 0xC9, 0xFF, 0x48, 0x8D, 0x50, 0x10,
 				0xE8, 0x90, 0x90, 0x90, 0x90,
 				0x0F, 0x1F, 0x44, 0x00, 0x00, 0x33, 0xDB, 0xBB, 0x01, 0x00, 0x00, 0x00, 0x8B, 0xC3, 0x48, 0x8B, 0x5C, 0x24, 0x60, 0x48, 0x83, 0xC4, 0x30, 0x5F, 0x5E, 0x5D, 0xC3 };
 			Function* ntProtectVirtualMemoryFunc = InsertByteFunction(o_exeFile, NtVirtualProtectMemoryFuncName, NtProtectVirtualMemoryFunc, sizeof(NtProtectVirtualMemoryFunc), offset);
@@ -1070,11 +1074,6 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		for (auto& func : c_Functions) {
-			if (func.Name.find("VirtualProtect") != string::npos)
-				printf("");
-		}
-
 		for (auto& [oRVA, func] : addedFunctions) {
 			fix_function_calls(o_exeFile, func, oRVA);
 		}
@@ -1101,13 +1100,13 @@ int main(int argc, char* argv[])
 					if (Function* newFunction = GetFunctionByName(newFuncName)) { // Replacing
 						if (SwapCall(o_exeFile, inst.i, inst.RVA, newFunction)) {
 							cout << " - [" << dye::aqua(" GetModuleHandle ") << "] - Success replaced call " << dye::light_green(newFuncName) << " function in " << dye::light_aqua(func->Name) << "!" << endl;
-					}
+						}
 						else {
 							cout << dye::light_red("Failed") << " to replace " << dye::yellow(newFuncName) << " function" << endl;
 						}
 						replaced++;
+					}
 				}
-			}
 				else if (inst.type == ReplaceInstructionType::VirtualProtect) {
 					if (Function* newFunction = GetFunctionByName(VirtualProtectFuncName)) { // Replacing
 						if (SwapCall(o_exeFile, inst.i, inst.RVA, newFunction)) {
@@ -1119,8 +1118,8 @@ int main(int argc, char* argv[])
 						replaced++;
 					}
 				}
+			}
 		}
-	}
 	}
 	if (fs::exists(newExeFileName))
 		fs::remove(newExeFileName);
