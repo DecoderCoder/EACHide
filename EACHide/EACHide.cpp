@@ -765,37 +765,6 @@ int main(int argc, char* argv[])
 		WriteToFile(resultFileName, "");
 		WriteToFile(resultFileName, "int main();");
 		WriteToFile(resultFileName, "");
-		/*ADD_DUMB_FUNC(1);
-		ADD_DUMB_FUNC(2);
-		ADD_DUMB_FUNC(3);*/
-		//WriteToFile(resultFileName, "#pragma comment(linker, \"/include:" + VirtualProtectFuncName + "\")"); // compiler is messing with variables and pointers to arguments
-		//WriteToFile(resultFileName, "EXTERN_C __declspec(noinline) bool " + VirtualProtectFuncName + "(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect) {");
-		//WriteToFile(resultFileName, "	SIZE_T MemoryLength = dwSize; // [rsp+50h] [rbp+8h] BYREF");
-		//WriteToFile(resultFileName, "	PVOID MemoryCache = lpAddress; // [rsp+58h] [rbp+10h] BYREF");	
-		//WriteToFile(resultFileName, "	return ((NtProtectVirtualMemory)(DUMB_FN_1))((HANDLE)-1, &MemoryCache, &MemoryLength, flNewProtect, lpflOldProtect);");
-		//WriteToFile(resultFileName, "}");
-
-		//WriteToFile(resultFileName, "typedef BOOLEAN(__stdcall* RtlFlushSecureMemoryCache)(PVOID MemoryCache, SIZE_T MemoryLength);");
-		//WriteToFile(resultFileName, "");
-
-		//WriteToFile(resultFileName, "#pragma comment(linker, \"/include:" + VirtualProtectFuncName + "\")");
-		//WriteToFile(resultFileName, "EXTERN_C __declspec(noinline) bool " + VirtualProtectFuncName + "(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect, PDWORD lpflOldProtect) {");
-		//WriteToFile(resultFileName, "	SIZE_T MemoryLength = dwSize; // [rsp+50h] [rbp+8h] BYREF");
-		//WriteToFile(resultFileName, "	PVOID MemoryCache = lpAddress; // [rsp+58h] [rbp+10h] BYREF");
-		//WriteToFile(resultFileName, "");
-		//WriteToFile(resultFileName, "	NTSTATUS v6 = ((NtProtectVirtualMemory)(DUMB_FN_1))((HANDLE)-1, (PVOID*)&lpAddress, &MemoryLength, flNewProtect, lpflOldProtect);");
-		//WriteToFile(resultFileName, "	if (v6 >= 0)");
-		//WriteToFile(resultFileName, "		return true;");
-		//WriteToFile(resultFileName, "	if (v6 == 0xC0000045)");
-		//WriteToFile(resultFileName, "	{");
-		//WriteToFile(resultFileName, "		if (((RtlFlushSecureMemoryCache)(DUMB_FN_2))(MemoryCache, MemoryLength))");
-		//WriteToFile(resultFileName, "		{");
-		//WriteToFile(resultFileName, "			if (((NtProtectVirtualMemory)(DUMB_FN_3))((HANDLE)-1, (PVOID*)&lpAddress, &MemoryLength, flNewProtect, lpflOldProtect) >= 0)");
-		//WriteToFile(resultFileName, "				return 1;");
-		//WriteToFile(resultFileName, "		}");
-		//WriteToFile(resultFileName, "	}");
-		//WriteToFile(resultFileName, "	return 0;");
-		//WriteToFile(resultFileName, "}");
 
 		WriteToFile(resultFileName, "");
 		vector<string> addedFuncs;
@@ -1033,30 +1002,13 @@ int main(int argc, char* argv[])
 			unsigned char VirtualProtectFunc[] = {
 				0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x18, 0x55, 0x56, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x49, 0x8B, 0xF1, 0x4C, 0x89, 0x48, 0xD8, 0x45, 0x8B, 0xC8, 0x48, 0x89, 0x50, 0x08, 0x41, 0x8B, 0xE8, 0x48, 0x89, 0x48, 0x10, 0x4C, 0x8D, 0x40, 0x08, 0x48, 0x83, 0xC9, 0xFF, 0x48, 0x8D, 0x50, 0x10,
 				0xE8, 0x90, 0x90, 0x90, 0x90,
-				0x0F, 0x1F, 0x44, 0x00, 0x00, 0x33, 0xDB, 0xBB, 0x01, 0x00, 0x00, 0x00, 0x8B, 0xC3, 0x48, 0x8B, 0x5C, 0x24, 0x60, 0x48, 0x83, 0xC4, 0x30, 0x5F, 0x5E, 0x5D, 0xC3 };
+				0x31, 0xDB, 0x85, 0xC0, 0x75, 0x05, 0xBB, 0x01, 0x00, 0x00, 0x00, 0x89, 0xD8, 0x48, 0x8B, 0x5C, 0x24, 0x60, 0x48, 0x83, 0xC4, 0x30, 0x5F, 0x5E, 0x5D, 0xC3 };
 			Function* ntProtectVirtualMemoryFunc = InsertByteFunction(o_exeFile, NtVirtualProtectMemoryFuncName, NtProtectVirtualMemoryFunc, sizeof(NtProtectVirtualMemoryFunc), offset);
 			Function* newVirtualProtectFunc = InsertByteFunction(o_exeFile, VirtualProtectFuncName, VirtualProtectFunc, sizeof(VirtualProtectFunc), offset);
 
 			uint32_t callRVA = 0x2F;
 			int jmpOffset = ntProtectVirtualMemoryFunc->RVA - newVirtualProtectFunc->RVA - callRVA - 5; // call size
 			*(int*)(o_exeFile + RVA2Offset(newVirtualProtectFunc->RVA) + callRVA + 1) = jmpOffset;
-
-			//Function* newFunc = CopyFunction(o_exeFile, c_exeFile, virtualProtectFunc, offset, backwardOffset);
-
-			//uint32_t iOffset = 0;
-			//for (auto& inst : newFunc->instructions) {
-			//	if (inst.info.mnemonic == ZYDIS_MNEMONIC_CALL && inst.operands[0].type == ZYDIS_OPERAND_TYPE_IMMEDIATE) { // check is it self call					
-			//		string oldFnName = GetFunctionByRVA(virtualProtectFunc->RVA + iOffset + inst.operands[0].imm.value.s + inst.info.length, c_Functions)->Name;
-			//		if (oldFnName == "DUMB_FN_1" || oldFnName == "DUMB_FN_3") {
-			//			SwapCall(o_exeFile, inst, newFunc->RVA + iOffset, ntProtectVirtualMemoryFunc);
-			//		}
-			//		else if (oldFnName == "DUMB_FN_2") {
-
-			//		}
-			//		//SwapCall(o_exeFile, inst, newFunc->RVA + iOffset, ntProtectVirtualMemoryFunc);
-			//	}
-			//	iOffset += inst.info.length;
-			//}
 		}
 
 		{
