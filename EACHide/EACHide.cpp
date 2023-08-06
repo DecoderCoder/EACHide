@@ -398,7 +398,7 @@ bool SwapCall(char* o_exeFile, ZydisDisassembledInstruction inst, uint32_t instR
 
 
 #ifndef _DEBUG
-#define { exit(code) system("pause"); return code }
+#define  exit(code) { system("pause"); return code; }
 #else
 #define exit(code) return code;
 #endif
@@ -414,7 +414,12 @@ int main(int argc, char* argv[])
 	wstring msvc;
 	wstring windowsKitPath;
 
-	wstring currentPath = fs::path(argv[0]).parent_path().wstring();
+#ifdef _DEBUG
+	fs::path currentPath = fs::path(argv[0]).parent_path();
+#else
+	fs::path currentPath = fs::current_path();
+#endif
+
 	{
 		wchar_t buff[MAX_PATH];
 		wstring winDrive;
@@ -508,7 +513,8 @@ int main(int argc, char* argv[])
 
 	cout << setw(width) << "Input file" << ": " << exeFileName << endl;
 	cout << setw(width) << "Pdb file" << ": " << pdbFileName << endl;
-	cout << setw(width) << "Output file" << ": " << newExeFileName << endl;
+	cout << setw(width) << "Output file" << ": " << newExeFileName << endl;	
+	cout << setw(width) << "Current path" << ": " << currentPath.string() << endl;
 	cout << endl;
 
 	if (!fs::exists(exeFileName) || !fs::exists(pdbFileName))
@@ -746,9 +752,8 @@ int main(int argc, char* argv[])
 	string GetAsyncKeyStateFuncName = "EACGetAsyncKeyState";
 	string VirtualProtectFuncName = "EACVirtualProtect";
 	string NtVirtualProtectMemoryFuncName = "NtVirtualProtectMemory";
-	if (false)
 	{ // Generating
-		wstring resultFileName = currentPath + L"\\EACHide\\EACHide.cpp";
+		wstring resultFileName = currentPath.wstring() + L"\\EACHide\\EACHide.cpp";
 		fs::create_directories(fs::path(resultFileName).parent_path());
 		if (fs::exists(resultFileName))
 			fs::remove(resultFileName);
@@ -896,7 +901,7 @@ int main(int argc, char* argv[])
 
 		memset(&clProc, 0, sizeof(clProc));
 
-		if (CreateProcessW((LPWSTR)clPath.c_str(), (LPWSTR)L" EACHide.cpp /nologo /permissive- /GS- /Gy /Zc:wchar_t /Z7 /Gm- /GL /Ot /O2 /Oi /sdl- /Zc:inline /fp:precise /Zc:forScope /Gd /Oi /MT /FC ", NULL, NULL, TRUE, CREATE_UNICODE_ENVIRONMENT, pEnv, (currentPath + L"\\EACHide\\").c_str(), &si, &clProc))
+		if (CreateProcessW((LPWSTR)clPath.c_str(), (LPWSTR)L" EACHide.cpp /nologo /permissive- /GS- /Gy /Zc:wchar_t /Z7 /Gm- /GL /Ot /O2 /Oi /sdl- /Zc:inline /fp:precise /Zc:forScope /Gd /Oi /MT /FC ", NULL, NULL, TRUE, CREATE_UNICODE_ENVIRONMENT, pEnv, (currentPath.wstring() + L"\\EACHide\\").c_str(), &si, &clProc))
 		{
 			cout << " - "; // lifehack
 			m_hreadDataFromExtProgram = CreateThread(0, 0, readDataFromExtProgram, NULL, 0, NULL);
@@ -933,7 +938,7 @@ int main(int argc, char* argv[])
 		cout << "[Analyzing compiled code]" << endl;
 
 		int c_pdbFileSize = 0;
-		char* c_pdbFile = ReadAllBytes(currentPath + L"\\EACHide\\EACHide.pdb", &c_pdbFileSize);
+		char* c_pdbFile = ReadAllBytes(currentPath.wstring() + L"\\EACHide\\EACHide.pdb", &c_pdbFileSize);
 
 		if (IsError(PDB::ValidateFile(c_pdbFile)))
 		{
@@ -942,7 +947,7 @@ int main(int argc, char* argv[])
 		}
 
 		int c_exeFileSize = 0;
-		char* c_exeFile = ReadAllBytes(currentPath + L"\\EACHide\\EACHide.exe", &c_exeFileSize);
+		char* c_exeFile = ReadAllBytes(currentPath.wstring() + L"\\EACHide\\EACHide.exe", &c_exeFileSize);
 
 		const PDB::RawFile c_rawPdbFile = PDB::CreateRawFile(c_pdbFile);
 		const PDB::DBIStream c_dbiStream = PDB::CreateDBIStream(c_rawPdbFile);
