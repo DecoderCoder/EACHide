@@ -78,12 +78,12 @@
     <LibraryPath>C:\Users\Decode\source\repos\EACHide\EACHide\XEDParse;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LibraryPath>C:\Users\Decode\source\repos\EACHide\EACHide\ntdll\x64_lib;C:\Users\Decode\source\repos\EACHide\EACHide\XEDParse;$(LibraryPath)</LibraryPath>
-    <IncludePath>C:\Users\Decode\source\repos\EACHide\EACHide\ntdll;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)ntdll\x64_lib;$(ProjectDir)XEDParse;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)ntdll;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LibraryPath>C:\Users\Decode\source\repos\EACHide\EACHide\XEDParse;C:\Users\Decode\source\repos\EACHide\EACHide\ntdll\x64_lib;$(LibraryPath)</LibraryPath>
-    <IncludePath>C:\Users\Decode\source\repos\EACHide\EACHide\ntdll;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)XEDParse;$(ProjectDir)ntdll\x64_lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)ntdll;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
