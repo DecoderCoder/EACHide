@@ -14,7 +14,7 @@
 #pragma comment(lib, "Userenv.lib")
 #pragma comment(lib, "ntdll.lib")
 #include "ntdll.h"
-
+#include "Resources.h"
 #include "color.hpp"
 
 #include "XEDParse/XEDParse.h"

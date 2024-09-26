@@ -754,9 +754,12 @@ int main(int argc, char* argv[])
 	string NtVirtualProtectMemoryFuncName = "NtVirtualProtectMemory";
 	{ // Generating
 		wstring resultFileName = currentPath.wstring() + L"\\EACHide\\EACHide.cpp";
+		string lazyImporterFileName = currentPath.string() + "\\EACHide\\LazyImporter.hpp";;
 		fs::create_directories(fs::path(resultFileName).parent_path());
 		if (fs::exists(resultFileName))
 			fs::remove(resultFileName);
+		if (!fs::exists(lazyImporterFileName))
+			WriteToFile(lazyImporterFileName, (char*)file_LazyImporter_hpp, file_LazyImporter_hpp_size);
 		//	WriteToFile(resultFileName, "#pragma once");	
 		WriteToFile(resultFileName, "#include <Windows.h>");
 		WriteToFile(resultFileName, "#include \"LazyImporter.hpp\"");
@@ -990,7 +993,7 @@ int main(int argc, char* argv[])
 			};
 			InsertByteFunction(o_exeFile, GetAsyncKeyStateFuncName, getAsyncKeyStateFunc, sizeof(getAsyncKeyStateFunc), offset);
 		}
-		
+
 		{
 			unsigned char NtProtectVirtualMemoryFunc[] = {
 				0x4C, 0x8B, 0xD1,
@@ -1077,12 +1080,16 @@ int main(int argc, char* argv[])
 		fs::remove(newExeFileName);
 	WriteToFile(newExeFileName, o_exeFile, o_exeFileSize);
 
+
 	if (replaced == haveToReplace) {
 		cout << endl << hue::black_on_green << endl << endl;
 	}
 	else {
 		cout << endl << hue::black_on_red << endl << endl;
 	}
+
+	if (fs::exists(currentPath.wstring() + L"\\EACHide"))
+		fs::remove_all(currentPath.wstring() + L"\\EACHide");
 
 	cout << dec << "	Complete (" << replaced << "/" << haveToReplace << ")" << endl << hue::reset << endl;
 
